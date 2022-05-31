@@ -22,7 +22,7 @@ function strtoexpr(s)
         "₈" => "8",
         "₉" => "9"
     end)
-    Meta.parse(replace(s, subs...))
+    Meta.parse(Base.replace(s, subs...))
 end
 
 function negate(ϕ)
@@ -76,19 +76,80 @@ function z3example()
     end
 end
 
-function z3formula(ϕ)
+function z3formula(ctx, ϕ)
     @match ϕ begin
-        Expr(:call, [:!, x::Expr])             => z3formula(negate(x))
-        Expr(:call, [r::Symbol, x, c::Number]) => Expr(:call, r, x, c) |> eval
-        Expr(:&&, [x::Expr, y::Expr])          => and(z3formula(x), z3formula(y))
-        Expr(:||, [x::Expr, y::Expr])          => or(z3formula(x), z3formula(y))
+        Expr(:call, [:!, x::Expr])             => z3formula(ctx, negate(x))
+        Expr(:call, [r::Symbol, x, c::Number]) => Expr(:call, r, z3var(ctx, x), c) |> eval
+        Expr(:&&, [x::Expr, y::Expr])          => and(z3formula(ctx, x), z3formula(ctx, y))
+        Expr(:||, [x::Expr, y::Expr])          => or(z3formula(ctx, x), z3formula(ctx, y))
         _ => error("invalid formula: ", ϕ)
     end
 end
 
+function z3var(ctx, ϕ)
+    @match ϕ begin
+        Expr(:call, [:*, a::Number, x::Symbol]) => a * z3var(ctx, x)
+        Expr(:call, [:+, vars...])              => sum(z3var.(vars))
+        Expr(:call, [:-, x, y])                 => z3var(ctx, x) - z3var(ctx, y)
+        _ => error("invalid formula: ", ϕ)
+    end
+end
+
+z3var(ctx, x::Symbol) = real_const(ctx, string(x))
+
 function signalsat(ϕ, ε, signals...)
     signals = initsigs(signals)
-    formula = (z3formula ∘ strtoexpr)(ϕ)
+    n = length(signals)
+
+    ctx = Context()
+    s = Solver(ctx, "QF_NRA")
+
+    # Add time bounds and interpolation
+    for (i, sig) in enumerate(signals)
+        t = real_const(ctx, "t" * string(i))
+        x = real_const(ctx, "x" * string(i))
+        add(s, and(t ≥ 0, t ≤ sig[end][1]))
+        add(s, pwl(sig, t, x))
+    end
+
+    # Add ε restrictions
+    # All (i, j) pairs where i ≠ j
+    i_j_pairs = filter(((i, j),) -> i ≠ j, collect(Iterators.product(1:n, 1:n)))
+    εₜ = map(i_j_pairs) do (i, j)
+        tᵢ = real_const(ctx, "t" * string(i))
+        tⱼ = real_const(ctx, "t" * string(j))
+        tᵢ - tⱼ ≤ ε
+    end
+    add(s, and(εₜ...))
+
+    # Add ϕ
+    formula = z3formula(ctx, strtoexpr(ϕ))
+    add(s, formula)
+
+    res = check(s)
+    if res == Z3.sat
+        println("Formula satisfies.")
+        m = get_model(s)
+        for (k, v) in consts(m)
+            v_str = get_decimal_string(v, 5)
+            println("$k = $v_str")
+        end
+    elseif res == Z3.unsat
+        println("Formula does not satisfy.")
+    else
+        println("Error: SMT solver failed. Satisfaction unknown.")
+    end
+end
+
+# Mostly pulled from https://stackoverflow.com/a/63769989
+window(x, len) = view.(Ref(x), (:).(1:length(x) - (len - 1), len:length(x)))
+
+function pwl(signal, t, x)
+    mapreduce(or, window(signal, 2)) do ((t₁, x₁), (t₂, x₂))
+        m = (x₂ - x₁) / (t₂ - t₁)
+        b = x₁ - m * t₁
+        and(x == m * t + b, and(t ≥ t₁, t ≤ t₂))
+    end
 end
 
 end # module
