@@ -3,6 +3,8 @@ module RVSAT
 using Match
 using Z3
 
+export signalsat
+
 function strtoexpr(s)
     # Ensure that Julia can interpret the formula correctly
     subs = Dict(begin
@@ -97,6 +99,11 @@ end
 
 z3var(ctx, x::Symbol) = real_const(ctx, string(x))
 
+"""
+Determine satisfaction of a formula ϕ with a maximum local time skew between agents of ε.
+
+Example call: `signalsat("x1 - x2 ≤ 0.1 ∧ x2 - x1 ≤ 0.1", 0, [1, 2, 4], [1, 4, -2], [1, 3, 4], [0, 1, -1])`
+"""
 function signalsat(ϕ, ε, signals...)
     signals = initsigs(signals)
     n = length(signals)
