@@ -104,6 +104,7 @@ Determine satisfaction of a formula ϕ with a maximum local time skew between ag
 
 Example call: `signalsat("x1 - x2 ≤ 0.1 ∧ x2 - x1 ≤ 0.1", 0, [1, 2, 4], [1, 4, -2], [1, 3, 4], [0, 1, -1])`
 """
+
 function signalsat(ϕ, ε, signals...)
     signals = initsigs(signals)
     n = length(signals)
@@ -153,9 +154,9 @@ window(x, len) = view.(Ref(x), (:).(1:length(x) - (len - 1), len:length(x)))
 
 function pwl(signal, t, x)
     mapreduce(or, window(signal, 2)) do ((t₁, x₁), (t₂, x₂))
-        m = (x₂ - x₁) / (t₂ - t₁)
-        b = x₁ - m * t₁
-        and(x == m * t + b, and(t ≥ t₁, t ≤ t₂))
+        t_diff = t₂ - t₁
+        x_diff = x₂ - x₁
+        and(t_diff * (x - x₁) == x_diff * (t - t₁), and(t ≥ t₁, t ≤ t₂))
     end
 end
 
