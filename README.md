@@ -33,9 +33,9 @@ After installing Julia, follow as below.
 > ]activate .
 ```
 
-- Install the dependencies `HDF5`, `Match`, and `Z3`.
+- Instantiate the project.
 ```
-> add HDF5 Match Z3
+> instantiate
 ```
 - Backspace once, and then type
 ```
